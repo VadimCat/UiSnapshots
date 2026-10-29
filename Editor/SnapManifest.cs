@@ -28,6 +28,12 @@ namespace Ji2.UiSnapshots.Editor
         public Dictionary<string, string> Tags;
         public IDictionary<string, object> State;
         public List<string> Warnings = new List<string>();
+        public string ReferenceSource;   // explicit `reference` of the capture step (relative to Tools/UiSnapshots or absolute)
+        public string Reference;         // copy inside the run directory
+        public string ReferenceKind;     // explicit | approved
+        public string ReferenceStatus;   // same | changed | resized (a mockup of another size: visual comparison only)
+        public double ReferenceChangedPercent;
+        public string ReferenceDiff;
     }
 
     public sealed class SnapIssue

@@ -27,6 +27,7 @@ namespace Ji2.UiSnapshots.Editor
     public sealed class SnapPass
     {
         public string Scenario;
+        public string Path;           // scenario file
         public string Skin;
         public List<string> Viewports = new List<string>();
         public override string ToString() => $"{Scenario}{(Skin != "" ? "/" + Skin : "")} [{string.Join(",", Viewports)}]";
@@ -50,6 +51,8 @@ namespace Ji2.UiSnapshots.Editor
         public int Warnings;
         public int Unsettled;
         public int FailedExpectations;
+        public int ReferenceMismatches;
+        public int ReferencesChecked;
         public string CompareSummary;
         public bool Terminal => Phase == "done" || Phase == "failed" || Phase == "cancelled";
     }
@@ -103,8 +106,8 @@ namespace Ji2.UiSnapshots.Editor
                 foreach (string skin in ResolveSkins(adapter, request.Skins.Count > 0 ? request.Skins : scenario.Skins))
                 {
                     if (scenario.RestartPerViewport)
-                        passes.AddRange(viewports.Select(v => new SnapPass { Scenario = scenario.Id, Skin = skin, Viewports = new List<string> { v } }));
-                    else passes.Add(new SnapPass { Scenario = scenario.Id, Skin = skin, Viewports = viewports });
+                        passes.AddRange(viewports.Select(v => new SnapPass { Scenario = scenario.Id, Path = scenario.Path, Skin = skin, Viewports = new List<string> { v } }));
+                    else passes.Add(new SnapPass { Scenario = scenario.Id, Path = scenario.Path, Skin = skin, Viewports = viewports });
                 }
             }
 
@@ -210,7 +213,7 @@ namespace Ji2.UiSnapshots.Editor
         private static void PreparePass(SnapRunState state)
         {
             var pass = state.Passes[state.PassIndex];
-            var scenario = SnapScenario.LoadById(pass.Scenario);
+            var scenario = SnapScenario.LoadById(pass.Path ?? pass.Scenario);
             var adapter = CreateAdapter();
             bool sandbox = !string.Equals((string)scenario.Setup["prefs"], "keep", StringComparison.OrdinalIgnoreCase);
             if (sandbox)
@@ -236,7 +239,7 @@ namespace Ji2.UiSnapshots.Editor
             EditorApplication.CallbackFunction tick = null;
             try
             {
-                var scenario = SnapScenario.LoadById(pass.Scenario);
+                var scenario = SnapScenario.LoadById(pass.Path ?? pass.Scenario);
                 var matrix = SnapSettings.LoadMatrix();
                 context = new SnapContext
                 {
@@ -267,7 +270,7 @@ namespace Ji2.UiSnapshots.Editor
                     var result = await SnapSteps.Invoke(info, SnapSteps.Bind(info, step, context));
                     if (result != null) context.Log($"-> {result}");
                 }
-                foreach (var point in log.Points.Where(p => !p.Consumed))
+                foreach (var point in log.Points.Where(p => !p.Consumed && !p.Synthetic))
                     manifest.UncapturedPoints.Add(new SnapPointRecord { Scenario = scenario.Id, Skin = pass.Skin, Id = point.Id, Step = point.Step + 1, Note = point.Note });
             }
             catch (Exception e)
@@ -294,6 +297,9 @@ namespace Ji2.UiSnapshots.Editor
         {
             SnapPrefsSandbox.Restore();
             var manifest = SnapManifest.Load(state.OutputDir);
+            try { state.ReferenceMismatches = SnapReferences.Apply(state.OutputDir, manifest); }
+            catch (Exception e) { manifest.Issues.Add(new SnapIssue { Severity = "warning", Message = "Reference check failed: " + e.Message }); }
+            state.ReferencesChecked = manifest.Shots.Count(s => s.Reference != null);
             manifest.Status = phase;
             manifest.FinishedUtc = DateTime.UtcNow.ToString("o");
             manifest.Seconds = Math.Round((DateTime.UtcNow - DateTime.Parse(manifest.StartedUtc).ToUniversalTime()).TotalSeconds, 1);
@@ -317,7 +323,8 @@ namespace Ji2.UiSnapshots.Editor
             state.Unsettled = manifest.Shots.Count(s => !s.Settled);
             state.FailedExpectations = manifest.Expectations.Count(e => !e.Passed);
             state.Phase = phase;
-            state.Progress = $"{phase}: {state.Shots} shot(s), {state.Errors} error(s), {state.Warnings} warning(s)";
+            state.Progress = $"{phase}: {state.Shots} shot(s), {state.Errors} error(s), {state.Warnings} warning(s)" +
+                             (state.ReferencesChecked > 0 ? $", {state.ReferencesChecked} vs reference ({state.ReferenceMismatches} approved mismatch(es))" : "");
             SaveState(state);
             Debug.Log($"[UiSnapshots] Run {state.Id} {state.Progress}. Report: {state.Report}");
         }

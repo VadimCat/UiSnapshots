@@ -11,11 +11,13 @@ namespace Ji2.UiSnapshots.Editor
     /// <summary>Game-independent steps. Game steps live in the consumer's Editor assembly.</summary>
     public static class BuiltInSteps
     {
-        /// <summary>{ "capture": "pause", "at": "screen.PauseScreen", "focus": true }</summary>
+        /// <summary>{ "capture": "pause", "at": "screen.PauseScreen", "focus": true, "reference": "References/mockups/pause.png" }</summary>
         [SnapStep("capture")]
         public static async Task Capture(SnapContext context, string name, string at = null, JToken focus = null,
-            int timeoutMs = 8000, bool settle = true, int settleTimeoutMs = 3000, string[] viewports = null)
+            int timeoutMs = 8000, bool settle = true, int settleTimeoutMs = 3000, string[] viewports = null, string reference = null)
         {
+            if (reference != null && !System.IO.File.Exists(SnapSettings.ResolveData(reference)))
+                throw new SnapException($"capture '{name}': reference image not found: {SnapSettings.ResolveData(reference)}");
             SnapPoint point = null;
             if (!string.IsNullOrEmpty(at))
             {
@@ -42,7 +44,11 @@ namespace Ji2.UiSnapshots.Editor
             var selected = viewports == null || viewports.Length == 0
                 ? context.Viewports
                 : context.Viewports.Where(v => viewports.Contains(v.Name)).ToList();
+            int before = context.Manifest.Shots.Count;
             await context.Capture(name, point, focusObject, settle, settleTimeoutMs, selected);
+            if (reference != null)
+                foreach (var shot in context.Manifest.Shots.Skip(before)) shot.ReferenceSource = reference;
+            context.Manifest.Save(context.OutputDir);
         }
 
         /// <summary>{ "wait": 500 } · { "wait": { "idle": true } } · { "wait": { "point": "decision.*" } } · { "wait": { "frames": 3 } }</summary>

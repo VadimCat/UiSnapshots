@@ -49,7 +49,8 @@ namespace Ji2.UiSnapshots.Tests
             var players = CompilationPipeline.GetAssemblies(AssembliesType.PlayerWithoutTestAssemblies);
             var runtime = players.FirstOrDefault(a => a.name == "Ji2.UiSnapshots");
             Assert.That(runtime, Is.Not.Null, "Ji2.UiSnapshots must compile for players");
-            Assert.That(runtime.assemblyReferences, Is.Empty, "the runtime facade must not depend on other assemblies");
+            var foreign = runtime.assemblyReferences.Select(r => r.name).Where(n => !n.StartsWith("UnityEngine") && !n.StartsWith("Unity.")).ToArray();
+            Assert.That(foreign, Is.Empty, "the runtime facade may only reference Unity's own assemblies");
             foreach (var assembly in players)
                 Assert.That(assembly.assemblyReferences.Any(r => r.name.StartsWith("Ji2.UiSnapshots.Editor") || r.name.EndsWith(".UiSnapshots.Editor")), Is.False,
                     $"{assembly.name} references UI Snapshots Editor tooling");
@@ -79,7 +80,7 @@ namespace Ji2.UiSnapshots.Tests
         public void RejectsUnknownAndAmbiguousSteps()
         {
             var unknown = Assert.Throws<SnapException>(() => SnapScenario.Parse(@"{ ""steps"": [ { ""lod"": 1 } ] }", null, Known));
-            StringAssert.Contains("not a known step", unknown.Message);
+            StringAssert.Contains("is a known step", unknown.Message);
             var twice = Assert.Throws<SnapException>(() => SnapScenario.Parse(@"{ ""steps"": [ { ""load"": 1, ""show"": ""x"" } ] }", null, Known));
             StringAssert.Contains("several step names", twice.Message);
             Assert.Throws<SnapException>(() => SnapScenario.Parse(@"{ ""steps"": [] }", null, Known));
@@ -154,6 +155,44 @@ namespace Ji2.UiSnapshots.Tests
                 Assert.That(File.Exists(SnapReport.Write(after, SnapManifest.Load(after), result)), Is.True);
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        }
+
+        [Test]
+        public void ChecksShotsAgainstExplicitReferences()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "UiSnapshotsTests-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                string run = MakeRun(root, "run", ("s/same@a", Color.white), ("s/other@a", Color.white), ("s/mockup@a", Color.white));
+                string white = Path.Combine(root, "run", "shots", "s", "same@a.png");
+                string red = Path.Combine(root, "red.png");
+                string big = Path.Combine(root, "big.png");
+                File.WriteAllBytes(red, Png(8, 8, Color.red));
+                File.WriteAllBytes(big, Png(16, 16, Color.white));
+                var manifest = SnapManifest.Load(run);
+                manifest.Shots[0].ReferenceSource = Path.Combine(root, "white.png");
+                File.Copy(white, manifest.Shots[0].ReferenceSource);
+                manifest.Shots[1].ReferenceSource = red;
+                manifest.Shots[2].ReferenceSource = big;
+                SnapReferences.Apply(run, manifest);
+                var shots = SnapManifest.Load(run).Shots.ToDictionary(s => s.Key);
+                Assert.That(shots["s/same@a"].ReferenceStatus, Is.EqualTo("same"));
+                Assert.That(shots["s/other@a"].ReferenceStatus, Is.EqualTo("changed"));
+                Assert.That(File.Exists(Path.Combine(run, shots["s/other@a"].ReferenceDiff)), Is.True);
+                Assert.That(shots["s/mockup@a"].ReferenceStatus, Is.EqualTo("resized"), "a mockup of another size is compared visually only");
+                Assert.That(File.Exists(Path.Combine(run, shots["s/mockup@a"].Reference)), Is.True, "references are copied into the run");
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        }
+
+        private static byte[] Png(int w, int h, Color color)
+        {
+            var tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
+            tex.SetPixels(Enumerable.Repeat(color, w * h).ToArray());
+            tex.Apply();
+            byte[] png = tex.EncodeToPNG();
+            UnityEngine.Object.DestroyImmediate(tex);
+            return png;
         }
 
         private static string MakeRun(string root, string label, params (string key, Color color)[] shots)

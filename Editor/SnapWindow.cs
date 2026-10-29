@@ -136,6 +136,13 @@ namespace Ji2.UiSnapshots.Editor
                     using (new EditorGUI.DisabledScope(!File.Exists(report)))
                         if (GUILayout.Button("Report", GUILayout.Width(60))) Application.OpenURL("file:///" + report.Replace('\\', '/'));
                     if (GUILayout.Button("Use as baseline", GUILayout.Width(110))) _compare = dir;
+                    using (new EditorGUI.DisabledScope(!File.Exists(Path.Combine(dir, SnapManifest.FileName))))
+                        if (GUILayout.Button(new GUIContent("Approve", "Copy every frame of this run into Tools/UiSnapshots/References as approved references"), GUILayout.Width(70))
+                            && EditorUtility.DisplayDialog("Approve references", $"Use all frames of {Path.GetFileName(dir)} as approved references?", "Approve", "Cancel"))
+                        {
+                            try { Debug.Log($"[UiSnapshots] Approved {SnapReferences.Approve(dir).Count} reference(s) into {SnapReferences.Dir}"); }
+                            catch (Exception e) { _error = e.Message; }
+                        }
                 }
             }
         }

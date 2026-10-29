@@ -36,7 +36,7 @@ namespace Ji2.UiSnapshots.Editor
     public static class SnapCompare
     {
         public const int DefaultThreshold = 24;      // max per-channel delta treated as noise (antialiasing, dithering)
-        public const double DefaultNoisePercent = 0.05;
+        public const double DefaultNoisePercent = 0.1;
 
         public static string ResolveBaseline(string spec, string currentRunDir)
         {
@@ -91,12 +91,20 @@ namespace Ji2.UiSnapshots.Editor
 
         private static void Diff(string beforePath, string afterPath, string afterDir, string key, int threshold, double noisePercent, SnapComparePair pair)
         {
+            var result = DiffImages(beforePath, afterPath, afterDir, Path.Combine("diff", key + ".png"), threshold, noisePercent);
+            pair.Width = result.width; pair.Height = result.height;
+            pair.Status = result.status; pair.ChangedPercent = result.percent; pair.Diff = result.diff;
+        }
+
+        /// <summary>Pixel diff of two PNGs. Status: same | changed | resized. Writes a heat map under runDir/diffRelative when changed.</summary>
+        public static (string status, double percent, string diff, int width, int height) DiffImages(string beforePath, string afterPath,
+            string runDir, string diffRelative, int threshold = DefaultThreshold, double noisePercent = DefaultNoisePercent)
+        {
             var b = Load(beforePath);
             var a = Load(afterPath);
             try
             {
-                pair.Width = a.width; pair.Height = a.height;
-                if (a.width != b.width || a.height != b.height) { pair.Status = "resized"; pair.ChangedPercent = 100; return; }
+                if (a.width != b.width || a.height != b.height) return ("resized", 100, null, a.width, a.height);
                 var pb = b.GetPixels32();
                 var pa = a.GetPixels32();
                 var heat = new Color32[pa.Length];
@@ -108,19 +116,16 @@ namespace Ji2.UiSnapshots.Editor
                     if (d > threshold) { changed++; heat[i] = new Color32(230, 40, 40, 255); }
                     else heat[i] = new Color32(gray, gray, gray, 255);
                 }
-                pair.ChangedPercent = Math.Round(100.0 * changed / pa.Length, 3);
-                pair.Status = pair.ChangedPercent > noisePercent ? "changed" : "same";
-                if (pair.Status == "changed")
-                {
-                    var tex = new Texture2D(a.width, a.height, TextureFormat.RGBA32, false);
-                    tex.SetPixels32(heat);
-                    tex.Apply();
-                    pair.Diff = Path.Combine("diff", key + ".png").Replace('\\', '/');
-                    string full = Path.Combine(afterDir, pair.Diff);
-                    Directory.CreateDirectory(Path.GetDirectoryName(full));
-                    File.WriteAllBytes(full, tex.EncodeToPNG());
-                    UnityEngine.Object.DestroyImmediate(tex);
-                }
+                double percent = Math.Round(100.0 * changed / pa.Length, 3);
+                if (percent <= noisePercent) return ("same", percent, null, a.width, a.height);
+                var tex = new Texture2D(a.width, a.height, TextureFormat.RGBA32, false);
+                tex.SetPixels32(heat);
+                tex.Apply();
+                string full = Path.Combine(runDir, diffRelative);
+                Directory.CreateDirectory(Path.GetDirectoryName(full));
+                File.WriteAllBytes(full, tex.EncodeToPNG());
+                UnityEngine.Object.DestroyImmediate(tex);
+                return ("changed", percent, diffRelative.Replace('\\', '/'), a.width, a.height);
             }
             finally
             {

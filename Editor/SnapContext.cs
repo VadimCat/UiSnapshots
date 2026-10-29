@@ -17,6 +17,7 @@ namespace Ji2.UiSnapshots.Editor
         public int Frame;
         public int Step;
         public bool Consumed;
+        public bool Synthetic;  // emitted by tooling (adapter/steps), not by a Snap.Point in game code
     }
 
     /// <summary>Receives Snap.Point/Snap.Tag from game code while a pass or live capture is active.</summary>
@@ -89,7 +90,11 @@ namespace Ji2.UiSnapshots.Editor
         }
 
         /// <summary>Emits a marker from tooling code (for example a synthetic screen change).</summary>
-        public void Emit(string id, UnityEngine.Object focus = null, string note = null) => Points.OnPoint(id, focus, note);
+        public void Emit(string id, UnityEngine.Object focus = null, string note = null)
+        {
+            Points.OnPoint(id, focus, note);
+            if (Points.Points.Count > 0 && Points.Points[Points.Points.Count - 1].Id == id) Points.Points[Points.Points.Count - 1].Synthetic = true;
+        }
 
         public async Task NextFrame()
         {

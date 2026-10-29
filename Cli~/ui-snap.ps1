@@ -5,8 +5,11 @@
   ui-snap.ps1 -Project D:\Codex\Game\worktrees\task -Scenario popups,hud -Viewports phones -Label after -Compare latest:before
   ui-snap.ps1 -Project <path> -List
   ui-snap.ps1 -Project <path> -CompareRuns <beforeRunDir>,<afterRunDir>
+  ui-snap.ps1 -Project <path> -Approve <runDir> [-Shots "popups/*@iphone-*"]      # promote frames to approved references
+  ui-snap.ps1 -Project <path> -AddReference mockup.png -Scenario popups -Capture pause [-Viewport iphone] [-Skin Original]
 .NOTES
-  Exit codes: 0 all shots taken and clean; 2 finished with warnings (unsettled frames, failed expects, step warnings);
+  Exit codes: 0 all shots taken and clean; 2 finished with warnings (unsettled frames, failed expects, step warnings,
+  frames that differ from an approved reference);
   1 failed, cancelled or CLI error; 3 timed out while waiting (the run continues in the Editor; use -Status / -Cancel).
 #>
 param(
@@ -18,6 +21,12 @@ param(
     [string]$Output = '',
     [string]$Compare = '',
     [string[]]$CompareRuns = @(),
+    [string]$Approve = '',
+    [string]$Shots = '*',
+    [string]$AddReference = '',
+    [string]$Capture = '',
+    [string]$Viewport = '',
+    [string]$Skin = '',
     [int]$TimeoutSec = 1800,
     [switch]$List,
     [switch]$Validate,
@@ -61,7 +70,20 @@ if ($Validate) {
 if ($CompareRuns.Count -gt 0) {
     $runs = Split-List $CompareRuns
     if ($runs.Count -ne 2) { throw '-CompareRuns needs <before>,<after>' }
-    $r = Invoke-Entry 'Compare' @($runs[0], $runs[1])
+    $r = Invoke-Entry 'Compare' @((Resolve-Path $runs[0]).Path.Replace('\','/'), (Resolve-Path $runs[1]).Path.Replace('\','/'))
+    $r | ConvertTo-Json -Depth 4
+    if ($r.ok) { exit 0 } else { exit 1 }
+}
+
+if ($Approve) {
+    $r = Invoke-Entry 'Approve' @((Resolve-Path $Approve).Path.Replace('\','/'), $Shots)
+    $r | ConvertTo-Json -Depth 4
+    if ($r.ok) { exit 0 } else { exit 1 }
+}
+if ($AddReference) {
+    $names = Split-List $Scenario
+    if ($names.Count -ne 1 -or -not $Capture) { throw '-AddReference needs exactly one -Scenario and -Capture.' }
+    $r = Invoke-Entry 'AddReference' @((Resolve-Path $AddReference).Path.Replace('\','/'), $names[0], $Capture, $Viewport, $Skin)
     $r | ConvertTo-Json -Depth 4
     if ($r.ok) { exit 0 } else { exit 1 }
 }
@@ -75,7 +97,12 @@ $request = [ordered]@{
     compare   = $Compare
 }
 if ($request.scenarios.Count -eq 0) { throw 'Pass -Scenario (or -List to see what exists).' }
-$start = Invoke-Entry 'Start' @(($request | ConvertTo-Json -Compress -Depth 4))
+# The request travels as a file: nested JSON does not survive Windows PowerShell native argument quoting.
+$requestDir = Join-Path $Project 'Temp\UiSnapshots'
+New-Item -ItemType Directory -Force -Path $requestDir | Out-Null
+$requestFile = Join-Path $requestDir 'request.json'
+[IO.File]::WriteAllText($requestFile, ($request | ConvertTo-Json -Depth 4), (New-Object Text.UTF8Encoding $false))
+$start = Invoke-Entry 'Start' @('Temp/UiSnapshots/request.json')
 if (-not $start.ok) { Write-Output "start failed: $($start.error)"; exit 1 }
 Write-Output "run $($start.runId): $($start.passes) pass(es) -> $($start.output)"
 if ($NoWait) { exit 0 }
@@ -91,7 +118,7 @@ while ((Get-Date) -lt $deadline) {
         if ($s.CompareSummary) { Write-Output "compare: $($s.CompareSummary)" }
         if ($s.Error) { Write-Output "error: $($s.Error)" }
         if ($s.Phase -ne 'done' -or $s.Errors -gt 0) { exit 1 }
-        if ($s.Warnings -gt 0 -or $s.Unsettled -gt 0 -or $s.FailedExpectations -gt 0) { exit 2 }
+        if ($s.Warnings -gt 0 -or $s.Unsettled -gt 0 -or $s.FailedExpectations -gt 0 -or $s.ReferenceMismatches -gt 0) { exit 2 }
         exit 0
     }
 }

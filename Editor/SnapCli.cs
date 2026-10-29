@@ -11,10 +11,20 @@ namespace Ji2.UiSnapshots.Editor
     /// </summary>
     public static class SnapCli
     {
-        /// <summary>{"scenarios":["popups"],"viewports":["phones"],"skins":["all"],"label":"after","output":"D:/...","compare":"latest:before"}</summary>
-        public static string Start(string requestJson) => Guard(() =>
+        /// <summary>
+        /// Request JSON, or a path (absolute or project-relative) to a file containing it:
+        /// {"scenarios":["popups"],"viewports":["phones"],"skins":["all"],"label":"after","output":"D:/...","compare":"latest:before"}
+        /// </summary>
+        public static string Start(string requestJsonOrPath) => Guard(() =>
         {
-            var request = JsonConvert.DeserializeObject<SnapRunRequest>(string.IsNullOrWhiteSpace(requestJson) ? "{}" : requestJson) ?? new SnapRunRequest();
+            string json = requestJsonOrPath?.Trim() ?? "";
+            if (json.Length > 0 && json[0] != '{')
+            {
+                string path = System.IO.Path.IsPathRooted(json) ? json : System.IO.Path.Combine(SnapSettings.ProjectRoot, json);
+                if (!System.IO.File.Exists(path)) throw new SnapException("Request file not found: " + path);
+                json = System.IO.File.ReadAllText(path);
+            }
+            var request = JsonConvert.DeserializeObject<SnapRunRequest>(json.Length == 0 ? "{}" : json) ?? new SnapRunRequest();
             var state = SnapRunner.Start(request);
             return new JObject { ["ok"] = true, ["runId"] = state.Id, ["output"] = state.OutputDir, ["passes"] = state.Passes.Count };
         });
@@ -47,6 +57,20 @@ namespace Ji2.UiSnapshots.Editor
             return new JObject { ["ok"] = true, ["summary"] = result.Summary, ["report"] = report, ["baseline"] = baseline };
         });
 
+        /// <summary>Promotes shots of a finished run to approved references (glob on the shot key, for example "popups/*@iphone-*").</summary>
+        public static string Approve(string runDir, string pattern) => Guard(() =>
+        {
+            var approved = SnapReferences.Approve(runDir, pattern);
+            return new JObject { ["ok"] = true, ["approved"] = new JArray(approved), ["dir"] = SnapReferences.Dir };
+        });
+
+        /// <summary>Stores any PNG (a mockup) as the reference of a capture; viewport/skin empty = any viewport.</summary>
+        public static string AddReference(string image, string scenario, string capture, string viewport, string skin) => Guard(() =>
+        {
+            string target = SnapReferences.AddDesign(image, scenario, capture, string.IsNullOrEmpty(viewport) ? null : viewport, string.IsNullOrEmpty(skin) ? null : skin);
+            return new JObject { ["ok"] = true, ["reference"] = target };
+        });
+
         /// <summary>Scenarios, viewports, presets, skins and steps available in this project.</summary>
         public static string List() => Guard(() =>
         {
@@ -59,11 +83,12 @@ namespace Ji2.UiSnapshots.Editor
                 ["output"] = SnapSettings.DefaultOutput,
                 ["adapter"] = adapter.GetType().FullName,
                 ["scenarios"] = new JArray(SnapSettings.ScenarioIds),
+                ["references"] = System.IO.Directory.Exists(SnapReferences.Dir) ? System.IO.Directory.GetFiles(SnapReferences.Dir, "*.png", System.IO.SearchOption.AllDirectories).Length : 0,
                 ["viewports"] = JObject.FromObject(matrix.Viewports.ToDictionary(k => k.Key, v => v.Value.ToString())),
                 ["presets"] = JObject.FromObject(matrix.Presets),
                 ["defaultViewports"] = matrix.Default,
                 ["skins"] = new JArray(adapter.Skins.Where(s => s != "")),
-                ["steps"] = new JArray(SnapSteps.All.Values.OrderBy(s => s.Name).Select(s => s.Signature))
+                ["steps"] = new JArray(SnapSteps.All.Values.Where(s => !s.Method.DeclaringType.Assembly.GetName().Name.EndsWith(".Tests")).OrderBy(s => s.Name).Select(s => s.Signature))
             };
         });
 

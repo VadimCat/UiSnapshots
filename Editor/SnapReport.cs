@@ -68,10 +68,11 @@ const D=/*DATA*/null, M=D.manifest, C=D.compare;
 const $=s=>document.querySelector(s), esc=s=>String(s??'').replace(/[&<>""]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','""':'&quot;'}[c]));
 let mode=C?'side':'shots';
 $('#title').textContent='UI Snapshots · '+(M.Label||M.RunId);
+const refs=M.Shots.filter(s=>s.Reference),refBad=refs.filter(s=>s.ReferenceStatus!=='same');
 const errors=M.Issues.filter(i=>i.Severity==='error'),warns=M.Issues.filter(i=>i.Severity!=='error'),unsettled=M.Shots.filter(s=>!s.Settled),exp=M.Expectations.filter(e=>!e.Passed);
 $('#meta').innerHTML=`<b>${esc(M.Status)}</b> · ${M.Shots.length} shots · ${esc(M.Branch)} @ <b>${esc((M.Commit||'').slice(0,10))}</b> (${esc(M.DirtyHash)}) · Unity ${esc(M.Unity)} · ${esc(M.StartedUtc)} · ${M.Seconds}s`+
  (C?`<br>compared with <b>${esc(C.BaselineBranch)} @ ${esc((C.BaselineCommit||'').slice(0,10))}</b>: ${esc(summary())}`:'')+
- `<br>${errors.length?`<span class=""chip bad"">${errors.length} errors</span>`:''}${warns.length?`<span class=""chip warn"">${warns.length} warnings</span>`:''}${unsettled.length?`<span class=""chip warn"">${unsettled.length} unsettled</span>`:''}${exp.length?`<span class=""chip warn"">${exp.length} failed expects</span>`:''}${M.UncapturedPoints.length?`<span class=""chip"">${M.UncapturedPoints.length} uncaptured markers</span>`:''}`;
+ `<br>${errors.length?`<span class=""chip bad"">${errors.length} errors</span>`:''}${warns.length?`<span class=""chip warn"">${warns.length} warnings</span>`:''}${unsettled.length?`<span class=""chip warn"">${unsettled.length} unsettled</span>`:''}${exp.length?`<span class=""chip warn"">${exp.length} failed expects</span>`:''}${M.UncapturedPoints.length?`<span class=""chip"">${M.UncapturedPoints.length} uncaptured markers</span>`:''}${refs.length?`<span class=""chip ${refBad.length?'warn':'ok'}"">${refs.length} vs reference, ${refBad.length} differ</span>`:''}`;
 function summary(){const n=s=>C.Pairs.filter(p=>p.Status===s).length;return `${n('changed')} changed, ${n('resized')} resized, ${n('added')} added, ${n('removed')} removed, ${n('same')} same`}
 function opts(id,label,values){const el=$(id);el.innerHTML=`<option value="""">${label}: all</option>`+[...new Set(values)].filter(v=>v!==undefined).map(v=>`<option>${esc(v)}</option>`).join('');el.onchange=render}
 opts('#fScenario','scenario',M.Shots.map(s=>s.Scenario));opts('#fSkin','skin',M.Shots.map(s=>s.Skin||'default'));opts('#fViewport','viewport',M.Shots.map(s=>s.Viewport));
@@ -82,6 +83,10 @@ $('#size').oninput=e=>document.documentElement.style.setProperty('--w',e.target.
 function zoom(src){const z=$('#zoom');z.querySelector('img').src=src;z.style.display='flex'}
 function parse(key){const m=key.match(/^(.*?)\/(.*)@(.*?)(?:-(.*))?$/);return m?{scenario:m[1],capture:m[2],viewport:m[3],skin:m[4]||'default'}:{}}
 function pass(k){const f=parse(k);return (!$('#fScenario').value||f.scenario===$('#fScenario').value)&&(!$('#fSkin').value||f.skin===$('#fSkin').value)&&(!$('#fViewport').value||f.viewport===$('#fViewport').value)}
+function refBlock(s){const cls=s.ReferenceStatus==='same'?'ok':s.ReferenceStatus==='changed'?'warn':'';
+ return `<div class=""small""><span class=""chip ${cls}"">${esc(s.ReferenceKind)} reference: ${esc(s.ReferenceStatus)}${s.ReferenceStatus==='changed'?' '+s.ReferenceChangedPercent+'%':''}</span></div>`+
+ `<div class=""slider"" style=""margin-top:4px""><img class=""base"" src=""${esc(s.Reference)}"" style=""width:100%""><img class=""top"" src=""${esc(s.File)}"" style=""width:100%;height:100%;object-fit:fill""></div><input type=""range"" value=""50"" oninput=""this.previousElementSibling.querySelector('.top').style.setProperty('--cut',this.value+'%')"" title=""left: reference · right: frame"">`+
+ (s.ReferenceDiff?`<img loading=""lazy"" style=""margin-top:4px"" src=""${esc(s.ReferenceDiff)}"" onclick=""zoom(this.src)"" title=""diff vs reference"">`:'')}
 function render(){
  document.querySelectorAll('#modes button').forEach(b=>b.classList.toggle('on',b.dataset.m===mode));
  let html='';
@@ -92,7 +97,7 @@ function render(){
  if(issues.length)html+=`<ul class=""issues"">${issues.join('')}</ul>`;
  if(mode==='shots'||!C){
   const groups={};M.Shots.filter(s=>pass(s.Key)).forEach(s=>{(groups[s.Scenario+' · '+s.Capture]??=[]).push(s)});
-  for(const [g,shots] of Object.entries(groups)){html+=`<div class=""group"">${esc(g)}</div><div class=""row"">`+shots.map(s=>`<div class=""card""><h3><span>${esc(s.Viewport)}${s.Skin?' · '+esc(s.Skin):''}</span>${s.Settled?'':'<span class=""chip warn"">unsettled</span>'}</h3><img loading=""lazy"" src=""${esc(s.File)}"" onclick=""zoom(this.src)"">${s.FocusFile?`<img loading=""lazy"" style=""margin-top:6px"" src=""${esc(s.FocusFile)}"" onclick=""zoom(this.src)"">`:''}<div class=""small"">${s.Width}×${s.Height} · insets ${s.InsetTop}/${s.InsetBottom}${s.Point?' · '+esc(s.Point):''}${s.Warnings.length?'<br>'+esc(s.Warnings.join(' ')):''}</div></div>`).join('')+'</div>'}
+  for(const [g,shots] of Object.entries(groups)){html+=`<div class=""group"">${esc(g)}</div><div class=""row"">`+shots.map(s=>`<div class=""card""><h3><span>${esc(s.Viewport)}${s.Skin?' · '+esc(s.Skin):''}</span>${s.Settled?'':'<span class=""chip warn"">unsettled</span>'}</h3><img loading=""lazy"" src=""${esc(s.File)}"" onclick=""zoom(this.src)"">${s.FocusFile?`<img loading=""lazy"" style=""margin-top:6px"" src=""${esc(s.FocusFile)}"" onclick=""zoom(this.src)"">`:''}${s.Reference?refBlock(s):''}<div class=""small"">${s.Width}×${s.Height} · insets ${s.InsetTop}/${s.InsetBottom}${s.Point?' · '+esc(s.Point):''}${s.Warnings.length?'<br>'+esc(s.Warnings.join(' ')):''}</div></div>`).join('')+'</div>'}
  } else {
   const st=$('#fStatus').value;const order={changed:0,resized:1,added:2,removed:3,same:4};
   const pairs=C.Pairs.filter(p=>pass(p.Key)&&(!st||p.Status===st)).sort((a,b)=>order[a.Status]-order[b.Status]||b.ChangedPercent-a.ChangedPercent);

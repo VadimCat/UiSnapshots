@@ -41,7 +41,6 @@ namespace Ji2.UiSnapshots.Editor
         {
             if (string.IsNullOrWhiteSpace(name)) throw new SnapException("capture needs a name.");
             if (name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || name.Contains("@")) throw new SnapException($"Capture name '{name}' must be a plain file name without '@'.");
-            focus ??= point?.Focus;
             foreach (var viewport in viewports)
             {
                 if (context.CurrentViewport != viewport) await ApplyViewport(context, viewport);
