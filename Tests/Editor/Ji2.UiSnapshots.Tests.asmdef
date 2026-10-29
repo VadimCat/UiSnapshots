@@ -1,0 +1,10 @@
+{
+  "name": "Ji2.UiSnapshots.Tests",
+  "rootNamespace": "Ji2.UiSnapshots.Tests",
+  "references": ["Ji2.UiSnapshots", "Ji2.UiSnapshots.Editor", "UnityEngine.TestRunner", "UnityEditor.TestRunner"],
+  "includePlatforms": ["Editor"],
+  "overrideReferences": true,
+  "precompiledReferences": ["nunit.framework.dll", "Newtonsoft.Json.dll"],
+  "autoReferenced": false,
+  "defineConstraints": ["UNITY_INCLUDE_TESTS"]
+}
