@@ -1,0 +1,12 @@
+{
+  "name": "com.ji2.ui-snapshots",
+  "version": "0.1.0",
+  "displayName": "JI2 UI Snapshots",
+  "description": "Editor-only UI screenshot markers, JSON scenarios, viewport/skin matrix runs, manifests and before/after comparison reports. Nothing reaches player builds except an empty marker facade.",
+  "unity": "6000.0",
+  "dependencies": {
+    "com.unity.nuget.newtonsoft-json": "3.2.1",
+    "com.unity.ugui": "2.0.0"
+  },
+  "author": { "name": "MauGames" }
+}

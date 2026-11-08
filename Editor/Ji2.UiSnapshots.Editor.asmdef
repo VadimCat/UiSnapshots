@@ -1,0 +1,15 @@
+{
+  "name": "Ji2.UiSnapshots.Editor",
+  "rootNamespace": "Ji2.UiSnapshots.Editor",
+  "references": [
+    "Ji2.UiSnapshots",
+    "Ji2.CreativeReplay.Editor",
+    "Ji2.Cheats",
+    "UnityEngine.UI"
+  ],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": true,
+  "versionDefines": [
+    { "name": "com.ji2.cheats", "expression": "1.0.0", "define": "JI2_CHEATS" }
+  ]
+}
